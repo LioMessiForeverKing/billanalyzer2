@@ -109,4 +109,4 @@ if __name__ == "__main__":
 
 # Although they come out as bipartisn; they always lean towards one party. A bill might be 53% republican and 47% democratic.
 # Build a ML Model using library of congress api and sklearn to train the model to analyze bills and basically write system
-# and give out like a percentage.
+# and gcive out like a percentage.
