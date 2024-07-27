@@ -21,7 +21,9 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import make_pipeline
 from sklearn.metrics import accuracy_score, classification_report
 import pandas as pd
+from flask import Flask, jsonify
 
+app = Flask(__name__)
 
 # Configuration
 BILL_HR = "hr"
@@ -58,6 +60,30 @@ def fetch_bill_data(client, congress, bill_type, bill_nums):
        bills.append(bill_info)
        print(f"Fetched Bill Title: {bill_info['title']}")  # Display the title of each bill
    return bills
+
+
+@app.route('/api/bill/<int:bill_number>', methods=['GET'])
+def get_bill_data(bill_number):
+    try:
+        # Fetch bill data using the existing logic
+        bill_xml = get_bill_details(client, CONGRESS, BILL_HR, bill_number)
+        bill_info = extract_bill_info(bill_xml)
+        
+        # Example stance data
+        stance = {
+            'democrat': 40,
+            'republican': 50,
+            'independent': 10
+        }
+        
+        response = {
+            'title': bill_info['title'],
+            'stance': stance
+        }
+        
+        return jsonify(response)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == "__main__":
@@ -105,6 +131,8 @@ if __name__ == "__main__":
 
    print(f'Accuracy: {accuracy}')
    print(f'Classification Report:\n{report}')
+
+   app.run(debug=True)
 
 
 # Although they come out as bipartisn; they always lean towards one party. A bill might be 53% republican and 47% democratic.
