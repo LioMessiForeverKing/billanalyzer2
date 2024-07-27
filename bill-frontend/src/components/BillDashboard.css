@@ -1,0 +1,40 @@
+.dashboard-title {
+    color: #fff;
+    text-align: center;
+    margin-top: 50px; /* space between top of page and title */
+    margin-bottom: 40px; /* space between title and chart container */
+}
+
+.container-wrapper {
+    display: flex;
+    flex-wrap: wrap; /* allow containers to wrap */
+    justify-content: space-evenly;
+    gap: 10px; /* space between containers */
+}
+
+.chart-container, .summary-container {
+    background-color: #17193bad;
+    border-radius: 10px; /* rounds corners of container */
+    /* box shadow around container for contrast */
+    -webkit-box-shadow: 0px 0px 23px -5px rgba(0,0,0,0.81);
+    -moz-box-shadow: 0px 0px 23px -5px rgba(0,0,0,0.81);
+    box-shadow: 0px 0px 23px -5px rgba(0,0,0,0.81);
+    display: flex;
+    justify-content: center; /* center chart in container */
+    padding: 20px; /* add padding around chart */
+    margin: 2%; /* responsive margin */
+    max-width: 600px; /* maximum width for wide screens */
+    max-height: 400px; /* maximum height for wide screens */
+    margin-left: auto; /* align to the right by default */
+    margin-right: auto; /* align to the right by default */
+}
+
+.summary-container {
+    min-width: 400px;
+    min-height: 400px;
+}
+
+.summary-title {
+    font-size: 1.5em; /* larger font size for title */
+    margin-bottom: 10px; /* space between title and content */
+}
