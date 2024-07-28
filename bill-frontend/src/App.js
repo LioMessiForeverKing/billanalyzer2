@@ -8,9 +8,14 @@ function App() {
         <Router>
             <div className="App">
                 <Routes>
+                    {/* Route to the main page */}
                     <Route path="/" element={<BillForm />} />
+                    {/* Route to the dashboard on submission of form */}
                     <Route path="/dashboard" element={<BillDashboard />} />
                 </Routes>
+                <footer className="App-footer">
+                    @ Bri Kirchgessner | Ayen Monasha | Tridhatri Vallamkondu
+                </footer>
             </div>
         </Router>
     );

@@ -9,27 +9,40 @@ from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 import os
 import google.generativeai as genai
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.pipeline import make_pipeline
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier, VotingClassifier
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app, resources={r"/*": {"origins": "*"}})  # Enable CORS for all routes
 
 # Configuration Constants
 BILL_HR = "hr"
+CONGRESS = 117
 API_KEY_PATH = "../secrets.ini"
+BILL_NUMS = [1, 3, 4, 5, 6, 7, 18, 19, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 97, 105, 106, 120, 121, 122, 124, 125, 126, 127, 129, 130, 137, 138, 139, 140, 141, 143, 144]
 
 # Preprocessing Functions
 def preprocess_text(text):
     """Clean and preprocess text data."""
-    text = text.lower()
-    text = re.sub(r'\d+', '', text)
-    text = re.sub(r'\s+', ' ', text)
-    text = re.sub(r'\W', ' ', text)
-    text = text.strip()
+    text = text.lower()  # Convert to lowercase
+    text = re.sub(r'\d+', '', text)  # Remove numbers
+    text = re.sub(r'\s+', ' ', text)  # Remove extra whitespace
+    text = re.sub(r'\W', ' ', text)  # Remove punctuation
+    text = text.strip()  # Remove leading and trailing whitespace
     stop_words = set(stopwords.words('english'))
     words = text.split()
-    words = [w for w in words if w not in stop_words]
+    words = [w for w in words if w not in stop_words]  # Remove stopwords
     lemmatizer = WordNetLemmatizer()
-    words = [lemmatizer.lemmatize(w) for w in words]
+    words = [lemmatizer.lemmatize(w) for w in words]  # Lemmatization
     return ' '.join(words)
 
 def get_bill_details(client, congress, bill_type, bill_num):
@@ -48,11 +61,15 @@ def extract_bill_info(bill_xml):
     }
     return bill_info
 
-def fetch_bill_data(client, congress, bill_type, bill_num):
-    """Fetch data for a single bill."""
-    bill_xml = get_bill_details(client, congress, bill_type, bill_num)
-    bill_info = extract_bill_info(bill_xml)
-    return bill_info
+def fetch_bill_data(client, congress, bill_type, bill_nums):
+    """Fetch data for multiple bills."""
+    bills = []
+    for bill_num in bill_nums:
+        bill_xml = get_bill_details(client, congress, bill_type, bill_num)
+        bill_info = extract_bill_info(bill_xml)
+        bills.append(bill_info)
+        print(f"Fetched Bill Title: {bill_info['title']}")  # Display the title of each bill
+    return bills
 
 def summarize_bill_with_gemini(bill_title):
     """Summarize the bill using the Gemini API."""
@@ -106,6 +123,10 @@ def fetch_bill():
     if not congress or not bill_num:
         return jsonify({'error': 'Congress number and Bill number are required'}), 400
 
+    # Validate congress and bill number
+    if not congress.isdigit() or not bill_num.isdigit():
+        return jsonify({'error': 'Invalid Congress number or Bill number format'}), 400
+
     try:
         # Initialize API client
         config = ConfigParser()
@@ -118,14 +139,17 @@ def fetch_bill():
         # Load the trained model
         model = joblib.load('best_model.pkl')
         # Fetch bill data
-        bill_data = fetch_bill_data(client, congress, BILL_HR, bill_num)
-        # Summarize the bill using Gemini API
-        bill_title = bill_data['title']
+        bill_data = fetch_bill_data(client, congress, BILL_HR, [bill_num])
+        if not bill_data:
+            return jsonify({'error': 'No data found for the given Congress number and Bill number'}), 404
+        # Use the first element of the bill_data list
+        bill_info = bill_data[0]
+        bill_title = bill_info['title']
         if not bill_title:
             return jsonify({'error': 'The fetched bill has no title. Cannot proceed with summarization.'}), 400
         summary = summarize_bill_with_gemini(bill_title)
         # Preprocess the text
-        bill_text = preprocess_text(bill_data['text'])
+        bill_text = preprocess_text(bill_info['text'])
         # Predict and display the result
         prediction = model.predict([bill_text])[0]
         probabilities = model.predict_proba([bill_text])[0]
@@ -146,4 +170,88 @@ def fetch_bill():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == "__main__":
+    # Initialize API client
+    config = ConfigParser()
+    config.read(API_KEY_PATH)
+    api_key = config.get("cdg_api", "api_auth_key")
+    client = CDGClient(api_key, response_format="xml")
+    # Fetch bill data
+    print(f"Fetching bill data for Congress {CONGRESS}...")
+    bill_data = fetch_bill_data(client, CONGRESS, BILL_HR, BILL_NUMS)
+    # Create a DataFrame
+    df = pd.DataFrame(bill_data)
+    # Check if the length of the party list matches the number of rows in the DataFrame
+    if len(df) != len(BILL_NUMS):
+        print(f"Length of party list ({len(BILL_NUMS)}) does not match the number of rows in the DataFrame ({len(df)}). Adjusting the party list...")
+        party_list = ['Democratic', 'Democratic', 'Democratic', 'Democratic', 'Democratic', 'Democratic',
+                      'Republican', 'Republican', 'Middle', 'Middle', 'Middle', 'Republican',
+                      'Republican', 'Middle', 'Middle', 'Republican', 'Republican', 'Democratic', 'Republican',
+                      'Republican', 'Republican', 'Republican', 'Republican', 'Republican', 'Republican',
+                      'Middle', 'Democratic', 'Republican', 'Middle', 'Republican', 'Republican', 'Middle',
+                      'Middle', 'Middle', 'Republican', 'Middle', 'Republican', 'Democratic', 'Middle',
+                      'Democratic', 'Republican', 'Middle', 'Middle', 'Republican', 'Republican', 'Middle',
+                      'Middle', 'Democratic', 'Republican', 'Republican', 'Republican', 'Republican',
+                      'Democratic', 'Middle', 'Middle', 'Democratic', 'Middle', 'Republican', 'Republican',
+                      'Middle', 'Middle', 'Middle', 'Middle', 'Democratic', 'Middle', 'Republican', 'Middle',
+                      'Democratic', 'Democratic', 'Democratic', 'Democratic', 'Democratic', 'Democratic',
+                      'Democratic', 'Democratic', 'Democratic', 'Democratic', 'Democratic', 'Democratic',
+                      'Democratic', 'Democratic', 'Democratic', 'Republican', 'Middle', 'Republican',
+                      'Republican', 'Middle']
+    else:
+        party_list = ['Democratic', 'Democratic', 'Democratic', 'Democratic', 'Democratic', 'Democratic',
+                      'Republican', 'Republican', 'Middle', 'Middle', 'Middle', 'Republican',
+                      'Republican', 'Middle', 'Middle', 'Republican', 'Republican', 'Democratic', 'Republican',
+                      'Republican', 'Republican', 'Republican', 'Republican', 'Republican', 'Republican',
+                      'Middle', 'Democratic', 'Republican', 'Middle', 'Republican', 'Republican', 'Middle',
+                      'Middle', 'Middle', 'Republican', 'Middle', 'Republican', 'Democratic', 'Middle',
+                      'Democratic', 'Republican', 'Middle', 'Middle', 'Republican', 'Republican', 'Middle',
+                      'Middle', 'Democratic', 'Republican', 'Republican', 'Republican', 'Republican',
+                      'Democratic', 'Middle', 'Middle', 'Democratic', 'Middle', 'Republican', 'Republican',
+                      'Middle', 'Middle', 'Middle', 'Middle', 'Democratic', 'Middle', 'Republican', 'Middle',
+                      'Democratic', 'Democratic', 'Democratic', 'Democratic', 'Democratic', 'Democratic',
+                      'Democratic', 'Democratic', 'Democratic', 'Democratic', 'Democratic', 'Democratic',
+                      'Democratic', 'Democratic', 'Democratic', 'Republican', 'Middle', 'Republican',
+                      'Republican', 'Middle']
+    df['party'] = party_list
+    # Preprocess data
+    df['text'] = df['text'].fillna('').apply(preprocess_text)  # Preprocess the text data
+    labels = df['party']
+    # Split the data
+    X_train, X_test, y_train, y_test = train_test_split(df['text'], labels, test_size=0.80, random_state=32)
+    # Create and train the model with GridSearchCV for hyperparameter tuning
+    pipeline_lr = make_pipeline(TfidfVectorizer(), LogisticRegression(max_iter=10000))
+    pipeline_rf = make_pipeline(TfidfVectorizer(), RandomForestClassifier(n_estimators=100))
+    # Voting Classifier
+    voting_clf = VotingClassifier(estimators=[
+        ('lr', pipeline_lr),
+        ('rf', pipeline_rf)
+    ], voting='soft')
+    # GridSearchCV for Voting Classifier
+    param_grid = {
+        'lr__tfidfvectorizer__ngram_range': [(1, 1), (1, 2)],
+        'lr__logisticregression__C': [0.1, 1, 10],
+        'rf__tfidfvectorizer__ngram_range': [(1, 1), (1, 2)],
+        'rf__randomforestclassifier__n_estimators': [100, 200]
+    }
+    grid_search = GridSearchCV(voting_clf, param_grid, cv=5)
+    grid_search.fit(X_train, y_train)
+    # Best model
+    best_model = grid_search.best_estimator_
+    # Predict and evaluate
+    predictions = best_model.predict(X_test)
+    accuracy = accuracy_score(y_test, predictions)
+    report = classification_report(y_test, predictions)
+    # Cross-Validation
+    cv_scores = cross_val_score(best_model, df['text'], labels, cv=5)
+    print(f'Cross-Validation Scores: {cv_scores}')
+    print(f'Average Cross-Validation Score: {np.mean(cv_scores)}')
+    # Confusion Matrix
+    cm = confusion_matrix(y_test, predictions, labels=['Democratic', 'Republican', 'Middle'])
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['Democratic', 'Republican', 'Middle'], yticklabels=['Democratic', 'Republican', 'Middle'])
+    plt.title('Confusion Matrix')
+    plt.xlabel('Predicted')
+    plt.ylabel('True')
+    print(f'Accuracy: {accuracy}')
+    print(f'Classification Report:\n{report}')
+    joblib.dump(best_model, 'best_model.pkl')
     app.run(debug=True)
