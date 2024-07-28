@@ -8,9 +8,7 @@ function App() {
         <Router>
             <div className="App">
                 <Routes>
-                    /* Route to the main page */
                     <Route path="/" element={<BillForm />} />
-                    /* Route to the dashboard on subission of form */
                     <Route path="/dashboard" element={<BillDashboard />} />
                 </Routes>
             </div>
